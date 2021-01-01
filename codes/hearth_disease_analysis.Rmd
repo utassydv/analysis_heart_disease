@@ -1,0 +1,151 @@
+---
+title: "Assignment 2 - Data Analysis 2 and Coding with R"
+author: "David Utassy"
+date: "01/01/2021"
+output: 
+  #html_document
+  pdf_document
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+TODO: Intr text...
+
+## Data
+
+TODO: describe data
+Number of observations: 1025
+
+```{r include=FALSE}
+# Clear memory
+rm(list=ls())
+
+# Packages to use
+library(tidyverse)
+# For scaling ggplots
+require(scales)
+# Estimate piecewise linear splines
+#install.packages("lspline")
+library(lspline)
+# Estimate robust SE
+#install.packages("estimatr")
+library(estimatr)
+# Compare models with robust SE
+#install.packages("texreg")
+library(texreg)
+# For different themes
+#install.packages("ggthemes")
+library(ggthemes)
+
+library(ggplot2)
+library("ggpubr")
+theme_set(
+  theme_bw() +
+    theme(legend.position = "top")
+  )
+library(moments)
+library(kableExtra)
+
+# Call the data from github
+my_url <- "https://raw.githubusercontent.com/utassydv/analysis_heart_disease/main/data/raw/heart.csv"
+df <- read_csv( my_url )
+
+
+# Quick check on all HISTOGRAMS
+df %>%
+  keep(is.numeric) %>% 
+  gather() %>% 
+  ggplot(aes(value)) +
+  facet_wrap(~key, scales = "free") +
+  geom_histogram()+
+  theme_wsj() + 
+  scale_fill_wsj()
+
+# Some distributions are skewed with a right tail. With those variables it worths to make a log transformation.
+df<- df %>% mutate( ln_oldpeak = log( oldpeak ),
+                    ln_trestbps = log( trestbps ),
+                    ln_chol = log( chol ) )
+
+p1<- ggplot( df , aes( x = trestbps ) ) +
+    geom_histogram( aes(y = ..density..) , alpha = 1, binwidth = 10, color = 'black', fill = 'white') +
+    geom_density( aes(y = ..density..) , alpha = .2 , bw = 10, color = 'black', fill="#FF6666") +
+    labs(x='Resting blood pressure (mm Hg)',y='Density')
+p2<- ggplot( df , aes( x = ln_trestbps ) ) +
+    geom_histogram( aes(y = ..density..) , alpha = 1, binwidth = 0.06, color = 'black', fill = 'white') +
+    geom_density( aes(y = ..density..) , alpha = .2 , bw = 0.06, color = 'black', fill="#56B4E9") +
+    labs(x='Resting blood pressure (mm Hg) on ln scale',y='Density')
+
+p3<- ggplot( df , aes( x = chol ) ) +
+    geom_histogram( aes(y = ..density..) , alpha = 1, binwidth = 20, color = 'black', fill = 'white') +
+    geom_density( aes(y = ..density..) , alpha = .2 , bw = 20, color = 'black', fill="#FF6666") +
+    labs(x='Serum cholestoral (mg/dl)',y='Density')
+p4<- ggplot( df , aes( x = ln_chol ) ) +
+    geom_histogram( aes(y = ..density..) , alpha = 1, binwidth = 0.1, color = 'black', fill = 'white') +
+    geom_density( aes(y = ..density..) , alpha = .2 , bw = 0.1, color = 'black', fill="#56B4E9") +
+    labs(x='Serum cholestoral (mg/dl) on ln scale',y='Density')
+
+age_sum <- df %>% summarise(
+  variable = 'Age',
+  mean     = mean(age),
+  median   = median(age),
+  std      = sd(age),
+  min      = min(age),
+  max      = max(age),
+  skew     = skewness(age) )
+
+sex_sum <- df %>% summarise(
+  variable = 'Gender (0:female, 1:male)',
+  mean     = mean(sex),
+  median   = median(sex),
+  std      = sd(sex),
+  min      = min(sex),
+  max      = max(sex),
+  skew     = skewness(sex) )
+
+cp_sum <- df %>% summarise(
+  variable = 'Chest pain type (4 categories)',
+  mean     = mean(cp),
+  median   = median(cp),
+  std      = sd(cp),
+  min      = min(cp),
+  max      = max(cp),
+  skew     = skewness(cp) )
+
+ln_trestbps_sum <- df %>% summarise(
+  variable = 'ln(Resting blood pressure) (mm Hg)',
+  mean     = mean(ln_trestbps),
+  median   = median(ln_trestbps),
+  std      = sd(ln_trestbps),
+  min      = min(ln_trestbps),
+  max      = max(ln_trestbps),
+  skew     = skewness(ln_trestbps) )
+
+ln_chol_sum <- df %>% summarise(
+  variable = 'ln(Serum cholestoral) (mg/dl)',
+  mean     = mean(ln_chol),
+  median   = median(ln_chol),
+  std      = sd(ln_chol),
+  min      = min(ln_chol),
+  max      = max(ln_chol),
+  skew     = skewness(ln_chol) )
+
+df_summary <- age_sum %>% add_row( sex_sum ) %>% add_row( cp_sum ) %>% 
+              add_row( ln_trestbps_sum ) %>% add_row( ln_chol_sum )
+#TODO: add meaningful rows
+```
+
+```{r fig 1, fig.width=8,fig.height=4,  echo = FALSE , results = 'asis', warning = FALSE, message = FALSE }
+ggarrange(p1, p2, p3, p4, nrow = 2, ncol=2 )
+```
+
+```{r, echo = FALSE , results = "asis", warning = FALSE, message = FALSE }
+kbl(df_summary, digits = 2) %>% kable_styling(bootstrap_options = "striped", full_width = F, position = "center")
+```
+
+
+
