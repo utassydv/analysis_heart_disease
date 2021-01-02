@@ -12,14 +12,47 @@ output:
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## Introduction
+# Introduction
 
-TODO: Intr text...
+In this project I address the question, how to predict from some measurable variables whether someone has heart disease. This is an important question as according to the World Health Organization, cardiovascular diseases are the leading cause of death globally. Of course, this topic requires broad knowledge on the topic. To get familiar with the problem I recommend [this article](https://www.kaggle.com/carlosdg/a-detail-description-of-the-heart-disease-dataset), which describes the theory in an understandable way. 
 
-## Data
 
-TODO: describe data
-Number of observations: 1025
+# Data
+
+This dataset is hosted on Kaggle (Heart Disease Dataset)[https://www.kaggle.com/johnsmith88/heart-disease-dataset], it is from 1988 and consists of four databases: Cleveland, Hungary, Switzerland, and Long each. The original data source is the [UCI Machine Learning Repository](https://archive.ics.uci.edu/ml/datasets/Heart+Disease), which contains 76 attributes, but all published experiments refer to using a subset of 14 of them, so as mine.  
+
+In the dataset, every row is a person with the given parameters in each column. The number of the observations is 1025 originally, which will decrease to 1000 after omitting some with missing values. This dataset was pretty clean already, only a few modifications were needed to make the analysis more convenient. 
+
+The most challenging part of this project is to understand somehow the variables I have. In order to get the reader somewhat familiar with them, I introduce them in a few sentences in an easy to understand form. For further details, I recommend the previously mentioned online sources.
+
+1. Target: (binary) whether the patient has heart disease or not (originally 0: yes, 1: no) but I made a modification, therefore 0: no, 1: yes
+2. Age: (quantitative) the age of the patient
+3. Gender: (binary) The gender of the patient (0:female, 1: male)
+4. Chest pain type (qualitative)
+    - Value 0: asymptomatic (no symptoms)
+    - Value 1: atypical angina
+    - Value 2: pain without relation to angina
+    - Value 3: typical angina
+5. Resting blood pressure in mm Hg (qualitative)
+6. Serum cholesterol in mg/dl: The level of cholesterol in the blood 
+7. Fasting blood sugar > 120 mg/dl: (binary) Whether the level of blood sugar is under or above the threshold (0: under, 1:above) 
+8. Resting electrocardiographic results (qualitative)
+    - Value 0: probable left ventricular hypertrophy
+    - Value 1: normal
+    - Value 2: abnormalities in the T wave or ST segment
+9. Maximum heart rate achieved (qualitative)
+10. Exercise-induced angina: (binary) whether pain occurred during exercise (0: no, 1: yes)
+11. Oldpeak: (quantitative) Decrease of the ST segment during exercise according to the same one on rest. (0 is optimal)
+12. The slope of the peak exercise ST segment: (qualitative) the slope of a specified line segment on the ECG
+    - Value 0: descending
+    - Value 1: flat
+    - Value 2: ascending
+13. Number of major vessels (0-3) colored by fluoroscopy: (qualitative, ordered) Number of narrow vessels, ideally should be 0.
+14. Results of the blood flow observed via the radioactive dye
+    - Value 1: fixed defect (no blood flow in some part of the heart)
+    - Value 2: normal blood flow
+    - Value 3: reversible defect (a blood flow is observed but it is not normal)
+
 
 ```{r include=FALSE}
 # Clear memory
@@ -51,6 +84,13 @@ theme_set(
 library(moments)
 library(kableExtra)
 
+
+library(mfx)
+library(margins)
+library(pscl)
+library(modelsummary)
+library(stargazer)
+
 # Call the data from github
 my_url <- "https://raw.githubusercontent.com/utassydv/analysis_heart_disease/main/data/raw/heart.csv"
 df <- read_csv( my_url )
@@ -65,6 +105,7 @@ df <- subset(df, thal!=0) #7removed
 #currently in the target column, we have an inverse logic heart disease(0:yes, 1:no), let's fix this!
 df$heart_dis[df$target == 0] <- 1
 df$heart_dis[df$target == 1] <- 0
+df$heart_dis <- as.numeric(df$heart_dis)
 df$target <- NULL
 
 # Quick check on all HISTOGRAMS
@@ -100,72 +141,65 @@ p4<- ggplot( df , aes( x = ln_chol ) ) +
     geom_density( aes(y = ..density..) , alpha = .2 , bw = 0.1, color = 'black', fill="#56B4E9") +
     labs(x='Serum cholestoral (mg/dl) on ln scale',y='Density')
 
-age_sum <- df %>% summarise(
-  variable = 'Age',
-  mean     = mean(age),
-  median   = median(age),
-  std      = sd(age),
-  min      = min(age),
-  max      = max(age),
-  skew     = skewness(age) )
+create_summary_table <-function (df, name, variable_name){
+  row <- df %>% summarise(
+  variable = name,
+  mean     = mean(variable_name),
+  median   = median(variable_name),
+  std      = sd(variable_name),
+  min      = min(variable_name),
+  max      = max(variable_name),
+  skew     = skewness(variable_name) )
+  return(row)
+}
 
-sex_sum <- df %>% summarise(
-  variable = 'Gender (0:female, 1:male)',
-  mean     = mean(sex),
-  median   = median(sex),
-  std      = sd(sex),
-  min      = min(sex),
-  max      = max(sex),
-  skew     = skewness(sex) )
+heart_dis_sum <- create_summary_table(df, 'Heart disease (0: no, 1: yes)', df$heart_dis)
+age_sum <- create_summary_table(df, 'Age', df$age)
+sex_sum <- create_summary_table(df, 'Gender (0:female, 1:male)', df$sex)
+trestbps_sum <- create_summary_table(df, 'Resting blood pressure (mm Hg)', df$trestbps)
+chol_sum <- create_summary_table(df, 'Cholesterol level (mg/dl)', df$chol)
+fbs_sum <- create_summary_table(df, 'Fasting blood sugar > 120 mg/dl (0: under, 1:above)', df$fbs)
+thalach_sum <- create_summary_table(df, 'Maxium heart rate during the stress test', df$thalach)
+exang_sum <- create_summary_table(df, 'Exercise-induced angina (0: no, 1: yes)', df$exang)
+oldpeak_sum <- create_summary_table(df, 'Oldpeek', df$oldpeak)
+ca_sum <- create_summary_table(df, 'Number of main blood vessels ', df$ca)
 
-cp_sum <- df %>% summarise(
-  variable = 'Chest pain type (4 categories)',
-  mean     = mean(cp),
-  median   = median(cp),
-  std      = sd(cp),
-  min      = min(cp),
-  max      = max(cp),
-  skew     = skewness(cp) )
 
-ln_trestbps_sum <- df %>% summarise(
-  variable = 'ln(Resting blood pressure) (mm Hg)',
-  mean     = mean(ln_trestbps),
-  median   = median(ln_trestbps),
-  std      = sd(ln_trestbps),
-  min      = min(ln_trestbps),
-  max      = max(ln_trestbps),
-  skew     = skewness(ln_trestbps) )
+df_summary <- heart_dis_sum %>% 
+          add_row( age_sum ) %>% 
+          add_row( sex_sum ) %>% 
+          add_row( trestbps_sum ) %>% 
+          add_row( chol_sum ) %>% 
+          add_row( fbs_sum ) %>% 
+          add_row( thalach_sum ) %>% 
+          add_row( exang_sum ) %>% 
+          add_row( oldpeak_sum ) %>% 
+          add_row( ca_sum ) 
 
-ln_chol_sum <- df %>% summarise(
-  variable = 'ln(Serum cholestoral) (mg/dl)',
-  mean     = mean(ln_chol),
-  median   = median(ln_chol),
-  std      = sd(ln_chol),
-  min      = min(ln_chol),
-  max      = max(ln_chol),
-  skew     = skewness(ln_chol) )
+w_dir <- "/Users/utassydv/Documents/workspaces/CEU/my_repos/analysis_heart_disease"
 
-df_summary <- age_sum %>% add_row( sex_sum ) %>% add_row( cp_sum ) %>% 
-              add_row( ln_trestbps_sum ) %>% add_row( ln_chol_sum )
-#TODO: add meaningful rows
-```
-
-```{r fig 1, fig.width=8,fig.height=4,  echo = FALSE , results = 'asis', warning = FALSE, message = FALSE }
-ggarrange(p1, p2, p3, p4, nrow = 2, ncol=2 )
+source(paste0(w_dir,'/codes/sum_stat.R'))
 ```
 
 ```{r, echo = FALSE , results = "asis", warning = FALSE, message = FALSE }
 kbl(df_summary, digits = 2) %>% kable_styling(bootstrap_options = "striped", full_width = F, position = "center")
 ```
 
+
+In order to get to know my variables, I have made some basics histograms. From those, it was visible that some variables might need a log transformation. In the appendix, we can see the result of some possible transformations, but in the end, I decided to stay with the original scales as the modifications probably would not pay off.  
+
+The table above contains the summary statistics of the variables I used in the analysis. To highlight some patterns in our data, the mean of the presence of heart disease is almost 50%, which could be good for prediction, however, 70% of the observations are male, which is not representing the population well. The age variable also shows that the sample is not really representing a whole population, but probably a subset of people who has to do something with cardiovascular problems. The other variables are more like medical terms, therefore I would not go into detailed preconceptions. 
+
+
+
+
+
 ```{r include=FALSE}
 create_plot <- function(column, name){
   plot <- ggplot(data = df, aes(x=column, y=heart_dis)) +
   geom_point(aes(x = column, y = heart_dis), color="red", shape = 16, alpha=0.8, show.legend=F, na.rm=TRUE)  +
   geom_smooth(method="loess", color="blue") +
-  #scale_x_continuous(expand = c(0.01,0.01), limits = c(0,25), breaks = seq(0,25,4))+
-  #scale_y_continuous(expand = c(0.01,0.01), limits = c(0,1), breaks = seq(0,1,0.1)) +
-  labs(x = name,y = "Heart disease (0:no, 1:yes)")
+  labs(x = name,y = "Heart disease (0: no, 1: yes)")
   
   return(plot)
 }
@@ -175,7 +209,6 @@ p_male <- create_plot(df$sex, "Male")
 p_cp <- create_plot(df$cp, "Chest pain type")
 p_trestbps <- create_plot(df$trestbps, "Resting blood pressure (mm Hg)")
 p_chol <- create_plot(df$chol, "Serum Cholesterol")
-p_fbs <- create_plot(df$fbs, "Fasting blood sugar (>120mg/dl)")
 p_restecg <- create_plot(df$restecg, "Resting electrocardiographic results")
 p_thalach <- create_plot(df$thalach, "Maximum heart rate achieved")
 p_exang <- create_plot(df$exang, "Exercise induced angina (1 = yes; 0 = no)")
@@ -183,12 +216,6 @@ p_oldpeak <- create_plot(df$oldpeak, "ST depression induced by exercise relative
 p_slope <- create_plot(df$slope, "The slope of the peak exercise ST segment")
 p_ca <- create_plot(df$ca, "Number of major vessels (0-3) colored by flourosopy")
 p_thal <- create_plot(df$thal, "1 = fixed defect; 2 = normal; 3 = reversable defect")
-
-#p_ln_chol <- create_plot(df$ln_chol, "ln Serum Cholesterol")
-#p_ln_trestbps <- create_plot(df$ln_trestbps, "ln Resting blood pressure (mm Hg)")
-#p_ln_oldpeak <- create_plot(df$ln_oldpeak, "ln ST depression induced by exercise relative to rest")
-
-
 ```
 
 ```{r fig 2, fig.width=16,fig.height=20,  echo = FALSE , results = 'asis', warning = FALSE, message = FALSE }
@@ -198,8 +225,8 @@ ggarrange(p_age,
           p_trestbps,
           #p_ln_trestbps,
           p_chol, 
-         # p_ln_chol,
-          p_fbs, 
+          #p_ln_chol,
+          #p_fbs, 
           p_restecg, 
           p_thalach, 
           p_exang, 
@@ -211,3 +238,267 @@ ggarrange(p_age,
           nrow = 7, ncol = 2 )
 ```
 
+```{r include=FALSE}
+####
+# SATURATED LPM MODELS
+
+
+lpm1 <- lm( heart_dis ~ sex , data = df )
+summary( lpm1, vcov=sandwich )
+
+# Get the predicted values
+df$pred1 <- predict( lpm1 )
+
+# Compare smoking with predicted values and real outcomes
+table(df$pred1, df$heart_dis)
+table(df$heart_dis, df$sex)
+
+
+lpm2 <- lm( heart_dis ~ sex + lspline(age,c(52,61)) , data = df )
+summary( lpm2 , vcov = sandwich )
+
+
+# Creating a model formula, that contains all of our variables
+model_formula <- formula( heart_dis ~ sex + lspline(age,c(52,61)) + as.factor(cp) + lspline(trestbps,c(115,130)) + lspline(chol,c(210,270,430)) +fbs + as.factor(restecg) +
+           lspline(thalach,c(140)) + exang +  lspline(oldpeak,c(4)) + as.factor(slope) + ca + as.factor(thal))
+
+lpm <- lm( model_formula,  data = df )
+summary( lpm , vcov=sandwich )
+
+stargazer(list(lpm1, lpm2, lpm), digits=3, out=paste(w_dir,"/out/lpm_models.html",sep=""))
+
+# Check predicted probabilities: is there any interesting values?
+# predicted probabilities
+df$pred_lpm <- predict( lpm )
+# Make a descriptive summary of the predictions!
+summary( df$pred_lpm )
+
+# Show the predicted probabilities' distribution (ggplot)
+ggplot( df , aes( x = pred_lpm ) ) +
+  geom_histogram( fill = 'navyblue' , color = 'grey90')
+  
+
+# We are interested in the top 1% and bottom 1% characteristics!
+#   Is there any significant difference?
+
+# Create bins which categorize the predicted values between 1-100
+df <- df %>% 
+  mutate( q100_pred_lpm = ntile(pred_lpm, 100) )
+
+# Make a summary statistics, using sum_stat for the bottom (q100_pred_lpm==1) 
+#   and top 1% (q100_pred_lpm==100), using stats = c('mean','median','sd')
+#   and variables c('smoking','ever_smoked','female','age','eduyears','income10','bmi','exerc')
+#   use the num_obs = F input for sum_stat
+
+# Top 1%, ones who probably has heart disease 
+t1 <- sum_stat( subset( df , q100_pred_lpm==100 ) , 
+                c('age','sex','cp','trestbps','chol','fbs','restecg','thalach','exang','oldpeak','slope','thal','ca'),
+                c('mean','median','sd'),
+                num_obs = F )
+t1
+
+# Bottom 1%, ones who probably does not have heart disease 
+b1 <- sum_stat( subset( df , q100_pred_lpm==1 ) , 
+                c('age','sex','cp','trestbps','chol','fbs','restecg','thalach','exang','oldpeak','slope','thal','ca'),
+                c('mean','median','sd'),
+                num_obs = F )
+b1
+
+
+
+####
+#LOGIT AND PROBIT MODELS
+#
+
+
+# logit coefficients:
+#   alternatively: family='binomial' automatically gives you logit, but not probit...
+logit <- glm( model_formula , data=df, family=binomial(link="logit") )
+summary(logit)
+glance(logit)
+
+# predicted probabilities 
+df$pred_logit <- predict.glm(logit, type="response")
+summary(df$pred_logit)
+
+# Calculate logit marginal differences
+logit_marg <- logitmfx( model_formula, data=df, atmean=FALSE, robust = T)
+print(logit_marg)
+
+
+##
+# Probit coefficients: replicate logit, but now use 'probit'
+probit <- glm( model_formula , data = df , family=binomial(link="probit") )
+summary(probit)
+
+# predicted probabilities 
+df$pred_probit<- predict.glm( probit , type = "response" )
+summary( df$pred_probit )
+
+# probit marginal differences
+probit_marg <- probitmfx(  model_formula, data=df, atmean=FALSE, robust = T)
+print( probit_marg )
+
+###
+# Creating a model summary output with msummary
+cm <- c('(Intercept)' = 'Constant')
+pmodels <- list(lpm, logit, logit_marg, probit, probit_marg)
+msummary( pmodels ,
+          fmt="%.3f",
+          gof_omit = 'DF|Deviance|Log.Lik.|F|R2 Adj.|AIC|BIC|R2|PseudoR2',
+          stars=c('*' = .05, '**' = .01),
+          coef_rename = cm,
+          coef_omit = c('as.factor*'),
+          output = paste0(w_dir,"/out/rich_models_coeff_comp.html")
+)
+
+# adding pseudo R2 (not work for mfx)
+glance_custom.glm <- function(x) data.frame(`PseudoR2` = pR2(x)["McFadden"])
+cm <- c('(Intercept)' = 'Constant')
+msummary(list(lpm, logit, probit),
+         fmt="%.3f",
+         gof_omit = 'DF|Deviance|Log.Lik.|F|R2 Adj.|AIC|BIC',
+         stars=c('*' = .05, '**' = .01),
+         coef_rename = cm,
+         coef_omit = 'as.factor(country)*'
+)
+
+##
+# TO DO:
+# Comparing predicted probabilities of logit and probit to LPM
+df$pred_lpm <- predict(lpm)
+ggplot(data = df) +
+  geom_point(aes(x=pred_lpm, y=pred_probit, color="Probit"), size=1,  shape=16) +
+  geom_point(aes(x=pred_lpm, y=pred_logit,  color="Logit"), size=1,  shape=16) +
+  geom_line(aes(x=pred_lpm, y=pred_lpm,    color="45 degree line"), size=1) +
+  labs(x = "Predicted probability of having heart disease (LPM)", y="Predicted probability")+
+  scale_y_continuous(expand = c(0.00,0.0), limits = c(0,1), breaks = seq(0,1,0.1)) +
+  scale_x_continuous(expand = c(0.00,0.0), limits = c(0,1), breaks = seq(0,1,0.1)) +
+  scale_color_manual(name = "", values=c("green", "red","blue"))+
+  theme(legend.position=c(0.55,0.08),
+        legend.direction = "horizontal",
+        legend.text = element_text(size = 4))
+
+# Also can use stargazer...
+stargazer(list(lpm, logit, probit), digits=3, out=paste(w_dir,"/out/T11_reg3_R.html",sep=""))
+
+####
+# 5. PART - GOODNESS OF FIT
+#
+
+# logit rich model
+ggplot(data = df,aes(x=pred_logit)) + 
+  geom_histogram(data=subset(df[df$heart_dis == 1, ]), 
+                 aes(fill=as.factor(heart_dis), color=as.factor(heart_dis), y = (..count..)/sum(..count..)*100),
+                 binwidth = 0.05, boundary=0, alpha=0.8) +
+  geom_histogram(data=subset(df[df$heart_dis == 0, ]), 
+                 aes(fill=as.factor(heart_dis), color=as.factor(heart_dis), y = (..count..)/sum(..count..)*100), 
+                 binwidth = 0.05, boundary=0, alpha=0) +
+  scale_fill_manual(name="", values=c("0" = "white", "1" = "red"),labels=c("Does not have heart disease","Has heart disease")) +
+  scale_color_manual(name="", values=c("0" = "blue", "1" = "red"),labels=c("Does not have heart disease","Has heart disease")) +
+  ylab("Percent") +
+  xlab("Fitted values") +
+  scale_x_continuous(expand=c(0.01,0.01) ,limits = c(0,1), breaks = seq(0,1,0.2)) +
+  scale_y_continuous(expand=c(0.00,0.00) ,limits = c(0,20), breaks = seq(0,20,4)) +
+  theme(legend.position = c(0.3,0.9),
+        legend.key.size = unit(x = 0.5, units = "cm"))
+
+#####
+# Summary statistics on predicted probabilities:
+#
+# TO DO:
+#   Create a CONDITIONAL sum_stat on stayhealth for:
+#     "pred_lpmbase","pred_lpm","pred_logit","pred_probit" 
+#   use: "mean","median","min","max","sd"
+#
+#   Hint: you may do two tables for staying healthy and not staying healty and use sum_stat on those
+#  
+source(paste0(w_dir,'/codes/sum_stat.R'))
+hd <- sum_stat( subset( df , heart_dis == 1 ) , 
+                c( "pred1","pred_lpm","pred_logit","pred_probit" ),
+                c("mean","median","min","max","sd"),
+                num_obs = F )
+
+nhd <- sum_stat( subset( df , heart_dis == 0 ) , 
+                c( "pred1","pred_lpm","pred_logit","pred_probit" ),
+                c("mean","median","min","max","sd"),
+                num_obs = F )
+
+hd
+nhd
+
+###
+# Bias and Calibration curve
+#
+# Lets use the logit model!
+#
+# Biased prediction? Calculate bias!
+#   Hint: bias = mean(prediction) - mean(actual)
+bias <- mean( df$pred_logit ) - mean(df$heart_dis)
+# 
+
+# Note dplyr:: is important to specify which package's 'select' is used!
+actual_vs_predicted <- df %>%
+  ungroup() %>% 
+  dplyr::select(actual = heart_dis, 
+                predicted = pred_logit) 
+num_groups <- 10
+
+calibration_d <- actual_vs_predicted %>%
+  mutate(predicted_score_group = dplyr::ntile(predicted, num_groups))%>%
+  group_by(predicted_score_group) %>%
+  dplyr::summarise(mean_actual = mean(actual), 
+                   mean_predicted = mean(predicted), 
+                   num_obs = n())
+
+ggplot( calibration_d,aes(x = mean_actual, y = mean_predicted)) +
+  geom_point( color='red', size=1.5, alpha=0.8) +
+  geom_line(  color='red', size=1  , alpha=0.8) +
+  geom_abline( intercept = 0, slope = 1, color='blue') +
+  labs( x = "Actual event probability", y = "Predicted event probability") +
+  scale_x_continuous(expand = c(0.01,0.01), limits = c(0,1), breaks = seq(0,1,0.1)) +
+  scale_y_continuous(expand = c(0.01,0.01), limits = c(0,1), breaks = seq(0,1,0.1))
+
+###
+# TO DO: create a function which creates a graphs!
+# Inputs:
+#   dataset, outcome, pred_prob_name, num_groups
+# Output:
+#   graph and calibration_d
+
+
+##
+# 7. PART - CONFUSION TABLES
+#
+# Handy for classification!
+#   will learn more on DA3
+
+# Create a new data_frame just for simplicity!
+df2 <- data.frame(df$pred1, df$pred_lpm, df$pred_logit, df$pred_probit)
+
+# Set the threshold value
+threshold <- 0.5
+
+# Decide for each observations and each prediction, if larger than the treshold value!
+for (i in 1:nrow(df2)) {
+  for (j in 1:ncol(df2)) {
+    if (df2[i,j]>threshold) {df2[i,j]=1}
+    else {df2[i,j]=0}
+  }
+}
+
+# confusion matrix - does it seems similar?
+for (j in 1:ncol(df2)){
+  print(prop.table(table(df2[, j], df$heart_dis)))
+}
+
+rm(df, i, j)
+
+```
+
+# Appendix
+
+```{r fig 1, fig.width=8,fig.height=4,  echo = FALSE , results = 'asis', warning = FALSE, message = FALSE}
+ggarrange(p1, p2, p3, p4, nrow = 2, ncol=2 )
+```
+Possible variable transformations
