@@ -55,6 +55,17 @@ library(kableExtra)
 my_url <- "https://raw.githubusercontent.com/utassydv/analysis_heart_disease/main/data/raw/heart.csv"
 df <- read_csv( my_url )
 
+#managing some problems in the dataset
+#removing observations with ca=4, as it means missing value
+df <- subset(df, ca!=4) #18 removed
+
+#removing observations with thal=0, as it means missing value
+df <- subset(df, thal!=0) #7removed
+
+#currently in the target column, we have an inverse logic heart disease(0:yes, 1:no), let's fix this!
+df$heart_dis[df$target == 0] <- 1
+df$heart_dis[df$target == 1] <- 0
+df$target <- NULL
 
 # Quick check on all HISTOGRAMS
 df %>%
@@ -67,7 +78,7 @@ df %>%
   scale_fill_wsj()
 
 # Some distributions are skewed with a right tail. With those variables it worths to make a log transformation.
-df<- df %>% mutate( ln_oldpeak = log( oldpeak ),
+df <- df %>% mutate( ln_oldpeak = log( oldpeak ),
                     ln_trestbps = log( trestbps ),
                     ln_chol = log( chol ) )
 
@@ -147,5 +158,56 @@ ggarrange(p1, p2, p3, p4, nrow = 2, ncol=2 )
 kbl(df_summary, digits = 2) %>% kable_styling(bootstrap_options = "striped", full_width = F, position = "center")
 ```
 
+```{r include=FALSE}
+create_plot <- function(column, name){
+  plot <- ggplot(data = df, aes(x=column, y=heart_dis)) +
+  geom_point(aes(x = column, y = heart_dis), color="red", shape = 16, alpha=0.8, show.legend=F, na.rm=TRUE)  +
+  geom_smooth(method="loess", color="blue") +
+  #scale_x_continuous(expand = c(0.01,0.01), limits = c(0,25), breaks = seq(0,25,4))+
+  #scale_y_continuous(expand = c(0.01,0.01), limits = c(0,1), breaks = seq(0,1,0.1)) +
+  labs(x = name,y = "Heart disease (0:no, 1:yes)")
+  
+  return(plot)
+}
 
+p_age <- create_plot(df$age, "Age")
+p_male <- create_plot(df$sex, "Male")
+p_cp <- create_plot(df$cp, "Chest pain type")
+p_trestbps <- create_plot(df$trestbps, "Resting blood pressure (mm Hg)")
+p_chol <- create_plot(df$chol, "Serum Cholesterol")
+p_fbs <- create_plot(df$fbs, "Fasting blood sugar (>120mg/dl)")
+p_restecg <- create_plot(df$restecg, "Resting electrocardiographic results")
+p_thalach <- create_plot(df$thalach, "Maximum heart rate achieved")
+p_exang <- create_plot(df$exang, "Exercise induced angina (1 = yes; 0 = no)")
+p_oldpeak <- create_plot(df$oldpeak, "ST depression induced by exercise relative to rest")
+p_slope <- create_plot(df$slope, "The slope of the peak exercise ST segment")
+p_ca <- create_plot(df$ca, "Number of major vessels (0-3) colored by flourosopy")
+p_thal <- create_plot(df$thal, "1 = fixed defect; 2 = normal; 3 = reversable defect")
+
+#p_ln_chol <- create_plot(df$ln_chol, "ln Serum Cholesterol")
+#p_ln_trestbps <- create_plot(df$ln_trestbps, "ln Resting blood pressure (mm Hg)")
+#p_ln_oldpeak <- create_plot(df$ln_oldpeak, "ln ST depression induced by exercise relative to rest")
+
+
+```
+
+```{r fig 2, fig.width=16,fig.height=20,  echo = FALSE , results = 'asis', warning = FALSE, message = FALSE }
+ggarrange(p_age,
+          p_male, 
+          p_cp, 
+          p_trestbps,
+          #p_ln_trestbps,
+          p_chol, 
+         # p_ln_chol,
+          p_fbs, 
+          p_restecg, 
+          p_thalach, 
+          p_exang, 
+          p_oldpeak,
+          #p_ln_oldpeak,
+          p_slope, 
+          p_ca, 
+          p_thal,
+          nrow = 7, ncol = 2 )
+```
 
