@@ -190,16 +190,13 @@ In order to get to know my variables, I have made some basics histograms. From t
 
 The table above contains the summary statistics of the variables I used in the analysis. To highlight some patterns in our data, the mean of the presence of heart disease is almost 50%, which could be good for prediction, however, 70% of the observations are male, which is not representing the population well. The age variable also shows that the sample is not really representing a whole population, but probably a subset of people who has to do something with cardiovascular problems. The other variables are more like medical terms, therefore I would not go into detailed preconceptions. 
 
-
-
-
-
 ```{r include=FALSE}
 create_plot <- function(column, name){
   plot <- ggplot(data = df, aes(x=column, y=heart_dis)) +
   geom_point(aes(x = column, y = heart_dis), color="red", shape = 16, alpha=0.8, show.legend=F, na.rm=TRUE)  +
   geom_smooth(method="loess", color="blue") +
-  labs(x = name,y = "Heart disease (0: no, 1: yes)")
+  labs(x = name,y = "Heart disease (0: no, 1: yes)") +
+  theme(text = element_text(size=20))
   
   return(plot)
 }
@@ -218,30 +215,23 @@ p_ca <- create_plot(df$ca, "Number of major vessels (0-3) colored by flourosopy"
 p_thal <- create_plot(df$thal, "1 = fixed defect; 2 = normal; 3 = reversable defect")
 ```
 
-```{r fig 2, fig.width=16,fig.height=20,  echo = FALSE , results = 'asis', warning = FALSE, message = FALSE }
-ggarrange(p_age,
-          p_male, 
-          p_cp, 
-          p_trestbps,
-          #p_ln_trestbps,
-          p_chol, 
-          #p_ln_chol,
-          #p_fbs, 
-          p_restecg, 
-          p_thalach, 
-          p_exang, 
+# Model
+In order to create a proper model, it worth to visualize the association between variables. In the appendix, I plotted all the meaningful associations.
+
+```{r fig 2, fig.width=18,fig.height=5,  echo = FALSE , results = 'asis', warning = FALSE, message = FALSE }
+ggarrange(p_male, 
           p_oldpeak,
-          #p_ln_oldpeak,
-          p_slope, 
-          p_ca, 
-          p_thal,
-          nrow = 7, ncol = 2 )
+          nrow = 1, ncol = 2 )
 ```
+
+On the plots above we can see two plots from the ones mentioned before. It can be easily seen that men have heart disease more likely than women and that ST depression induced by exercise has a positive correlation with heart disease as well. These are just two variables out of 13 but in the appendix, the association of other variables with the presence of heart disease can be observed. It turns out, that almost all of the provided variables have some correlation with the presence of heart disease. Therefore I will try to use all of them in an LPM, logit, and probit model.
+
+
+
 
 ```{r include=FALSE}
 ####
-# SATURATED LPM MODELS
-
+# LPM MODELS
 
 lpm1 <- lm( heart_dis ~ sex , data = df )
 summary( lpm1, vcov=sandwich )
@@ -263,11 +253,11 @@ model_formula <- formula( heart_dis ~ sex + lspline(age,c(52,61)) + as.factor(cp
            lspline(thalach,c(140)) + exang +  lspline(oldpeak,c(4)) + as.factor(slope) + ca + as.factor(thal))
 
 lpm <- lm( model_formula,  data = df )
+
 summary( lpm , vcov=sandwich )
 
 stargazer(list(lpm1, lpm2, lpm), digits=3, out=paste(w_dir,"/out/lpm_models.html",sep=""))
 
-# Check predicted probabilities: is there any interesting values?
 # predicted probabilities
 df$pred_lpm <- predict( lpm )
 # Make a descriptive summary of the predictions!
@@ -310,9 +300,8 @@ b1
 #LOGIT AND PROBIT MODELS
 #
 
-
+#LOGIT
 # logit coefficients:
-#   alternatively: family='binomial' automatically gives you logit, but not probit...
 logit <- glm( model_formula , data=df, family=binomial(link="logit") )
 summary(logit)
 glance(logit)
@@ -326,7 +315,7 @@ logit_marg <- logitmfx( model_formula, data=df, atmean=FALSE, robust = T)
 print(logit_marg)
 
 
-##
+##PROBIT
 # Probit coefficients: replicate logit, but now use 'probit'
 probit <- glm( model_formula , data = df , family=binomial(link="probit") )
 summary(probit)
@@ -339,32 +328,6 @@ summary( df$pred_probit )
 probit_marg <- probitmfx(  model_formula, data=df, atmean=FALSE, robust = T)
 print( probit_marg )
 
-###
-# Creating a model summary output with msummary
-cm <- c('(Intercept)' = 'Constant')
-pmodels <- list(lpm, logit, logit_marg, probit, probit_marg)
-msummary( pmodels ,
-          fmt="%.3f",
-          gof_omit = 'DF|Deviance|Log.Lik.|F|R2 Adj.|AIC|BIC|R2|PseudoR2',
-          stars=c('*' = .05, '**' = .01),
-          coef_rename = cm,
-          coef_omit = c('as.factor*'),
-          output = paste0(w_dir,"/out/rich_models_coeff_comp.html")
-)
-
-# adding pseudo R2 (not work for mfx)
-glance_custom.glm <- function(x) data.frame(`PseudoR2` = pR2(x)["McFadden"])
-cm <- c('(Intercept)' = 'Constant')
-msummary(list(lpm, logit, probit),
-         fmt="%.3f",
-         gof_omit = 'DF|Deviance|Log.Lik.|F|R2 Adj.|AIC|BIC',
-         stars=c('*' = .05, '**' = .01),
-         coef_rename = cm,
-         coef_omit = 'as.factor(country)*'
-)
-
-##
-# TO DO:
 # Comparing predicted probabilities of logit and probit to LPM
 df$pred_lpm <- predict(lpm)
 ggplot(data = df) +
@@ -387,7 +350,23 @@ stargazer(list(lpm, logit, probit), digits=3, out=paste(w_dir,"/out/T11_reg3_R.h
 #
 
 # logit rich model
-ggplot(data = df,aes(x=pred_logit)) + 
+predict_lpm = ggplot(data = df,aes(x=pred_lpm)) + 
+  geom_histogram(data=subset(df[df$heart_dis == 1, ]), 
+                 aes(fill=as.factor(heart_dis), color=as.factor(heart_dis), y = (..count..)/sum(..count..)*100),
+                 binwidth = 0.05, boundary=0, alpha=0.8) +
+  geom_histogram(data=subset(df[df$heart_dis == 0, ]), 
+                 aes(fill=as.factor(heart_dis), color=as.factor(heart_dis), y = (..count..)/sum(..count..)*100), 
+                 binwidth = 0.05, boundary=0, alpha=0) +
+  scale_fill_manual(name="", values=c("0" = "white", "1" = "red"),labels=c("Does not have heart disease","Has heart disease")) +
+  scale_color_manual(name="", values=c("0" = "blue", "1" = "red"),labels=c("Does not have heart disease","Has heart disease")) +
+  ylab("Percent") +
+  xlab("Fitted values") +
+  scale_x_continuous(expand=c(0.01,0.01) ,limits = c(-0.5,1.5), breaks = seq(0,1,0.2)) +
+  scale_y_continuous(expand=c(0.00,0.00) ,limits = c(0,20), breaks = seq(0,20,4)) +
+  theme(legend.position = c(0.7,0.8),
+        legend.key.size = unit(x = 0.5, units = "cm"))
+
+predict_logit = ggplot(data = df,aes(x=pred_logit)) + 
   geom_histogram(data=subset(df[df$heart_dis == 1, ]), 
                  aes(fill=as.factor(heart_dis), color=as.factor(heart_dis), y = (..count..)/sum(..count..)*100),
                  binwidth = 0.05, boundary=0, alpha=0.8) +
@@ -400,19 +379,12 @@ ggplot(data = df,aes(x=pred_logit)) +
   xlab("Fitted values") +
   scale_x_continuous(expand=c(0.01,0.01) ,limits = c(0,1), breaks = seq(0,1,0.2)) +
   scale_y_continuous(expand=c(0.00,0.00) ,limits = c(0,20), breaks = seq(0,20,4)) +
-  theme(legend.position = c(0.3,0.9),
+  theme(legend.position = c(0.7,0.8),
         legend.key.size = unit(x = 0.5, units = "cm"))
 
 #####
 # Summary statistics on predicted probabilities:
-#
-# TO DO:
-#   Create a CONDITIONAL sum_stat on stayhealth for:
-#     "pred_lpmbase","pred_lpm","pred_logit","pred_probit" 
-#   use: "mean","median","min","max","sd"
-#
-#   Hint: you may do two tables for staying healthy and not staying healty and use sum_stat on those
-#  
+
 source(paste0(w_dir,'/codes/sum_stat.R'))
 hd <- sum_stat( subset( df , heart_dis == 1 ) , 
                 c( "pred1","pred_lpm","pred_logit","pred_probit" ),
@@ -492,8 +464,24 @@ for (j in 1:ncol(df2)){
   print(prop.table(table(df2[, j], df$heart_dis)))
 }
 
-rm(df, i, j)
 
+```
+
+In the experimenting phase, I have created different models to capture the data in my sample. In the appendix, one can see the summary table of three different LPM models.  At the bottom of that table, we can compare the three models with the R$^2$ attribute. According to that, it is clear, that we should go on with the model that has all the variables.
+
+
+In order to handle nonlinearities, I used piecewise linear splines according to the already mentioned plots. Furthermore to handle quantitative variables I used them as a factor (which creates n-1 dummy variables in the model).
+
+In order to get closer to possible prediction, we want our model to give the probability between 0 and 1 on the presence of heart disease in a patient. In our case with the LPM model, we are in trouble as it gives predictions under zero and above one as well.
+
+```{r fig 0, fig.width=8,fig.height=3,  echo = FALSE , results = 'asis', warning = FALSE, message = FALSE}
+predict_lpm
+```
+
+The solution is to use logit or probit model instead of LPM. This will predict only probabilities between 0 and 1. To be able to interpret the logit and probit models we should calculate the marginal differences as well. In the appendix, we can see the comparison of the LPM the Logit, and he Probit model.  At the bottom of the table, we can also compare them in their "goodness". According to the AIC and BIC I have chosen the logit model. 
+
+```{r fig 01, fig.width=8,fig.height=3,  echo = FALSE , results = 'asis', warning = FALSE, message = FALSE}
+predict_logit
 ```
 
 # Appendix
@@ -501,4 +489,56 @@ rm(df, i, j)
 ```{r fig 1, fig.width=8,fig.height=4,  echo = FALSE , results = 'asis', warning = FALSE, message = FALSE}
 ggarrange(p1, p2, p3, p4, nrow = 2, ncol=2 )
 ```
+\begin{center}
 Possible variable transformations
+\end{center}
+
+```{r fig 3, fig.width=18,fig.height=25,  echo = FALSE , results = 'asis', warning = FALSE, message = FALSE }
+ggarrange(p_age,
+          p_male, 
+          p_cp, 
+          p_trestbps,
+          p_chol,
+          p_restecg, 
+          p_thalach, 
+          p_exang, 
+          p_oldpeak,
+          p_slope, 
+          p_ca, 
+          p_thal,
+          nrow = 7, ncol = 2 )
+```
+
+\begin{center}
+```{r, results = 'asis', echo = FALSE, scalebox = 0.5}
+texreg(list(lpm1, lpm2, lpm), table = FALSE, use.packages = FALSE, center = TRUE, omit.coef = "as.factor*", 
+       custom.model.names = c("LPM model 1", "LPM model 2", "LPM model 3"),
+       custom.coef.names = c("Intercept", "Gender", "Age below 52", "Age between 52 and 61", "Age above 61", 
+                             "Resting blood pressure under 115", "Resting blood pressure between 115 and 130",
+                             "Resting blood pressure above 130", "Serum cholesterol under 210",
+                             "Serum cholesterol between 210 and 270", "Serum cholesterol between 270 and 430",
+                             "Serum cholesterol above 430", "Fasting blood sugar above 120 mg/dl",
+                             "Maximum heart rate achieved below 140", "Maximum heart rate achieved above 140",
+                             "Exercise-induced angina occured", "Oldpeak below 4", "Oldpeak above 4",
+                             "Number of major vessels")) 
+```
+
+Comparing LPM models with different number of variables (quantitative variables are hidden from the third model to fit onto one page but I am controlling the model on them as well)
+\end{center}
+
+\begin{center}
+```{r, results = 'asis', echo = FALSE, scalebox = 0.5}
+texreg(list(lpm, logit, logit_marg, probit, probit_marg), table = FALSE, use.packages = FALSE, center = TRUE, omit.coef = "as.factor*", 
+       custom.model.names = c("LPM", "Logit", "Logit margins", "Probit", "Probit margins"),
+       custom.coef.names = c("Intercept", "Gender", "Age below 52", "Age between 52 and 61", "Age above 61", 
+                             "Resting blood pressure under 115", "Resting blood pressure between 115 and 130",
+                             "Resting blood pressure above 130", "Serum cholesterol under 210",
+                             "Serum cholesterol between 210 and 270", "Serum cholesterol between 270 and 430",
+                             "Serum cholesterol above 430", "Fasting blood sugar above 120 mg/dl",
+                             "Maximum heart rate achieved below 140", "Maximum heart rate achieved above 140",
+                             "Exercise-induced angina occured", "Oldpeak below 4", "Oldpeak above 4",
+                             "Number of major vessels")) 
+```
+
+Comparing LPM model with Logit and Probit models (quantitative variables are hidden from the third model to fit onto one page but I am controlling the model on them as well)
+\end{center}
