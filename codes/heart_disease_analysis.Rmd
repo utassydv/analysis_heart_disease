@@ -3,14 +3,18 @@ title: "Assignment 2 - Data Analysis 2 and Coding with R"
 author: "David Utassy"
 date: "01/01/2021"
 output: 
-  #html_document
-  pdf_document
+  html_document
+  #pdf_document
 
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
+
+# Abstract
+
+In this assignment, I have fitted a logit model on the dataset which measures 1000 patients' attributes and whether they have heart disease or not. That model uncovers some interesting patterns between the variables and might predict the probability of a new patient with the given variables. This model can not be generalized to the whole population because the dataset is clearly not representative, but it might be used as a compass between the variables.
 
 # Introduction
 
@@ -19,7 +23,7 @@ In this project I address the question, how to predict from some measurable vari
 
 # Data
 
-This dataset is hosted on Kaggle (Heart Disease Dataset)[https://www.kaggle.com/johnsmith88/heart-disease-dataset], it is from 1988 and consists of four databases: Cleveland, Hungary, Switzerland, and Long each. The original data source is the [UCI Machine Learning Repository](https://archive.ics.uci.edu/ml/datasets/Heart+Disease), which contains 76 attributes, but all published experiments refer to using a subset of 14 of them, so as mine.  
+This dataset is hosted on Kaggle [Heart Disease Dataset](https://www.kaggle.com/johnsmith88/heart-disease-dataset), it is from 1988 and consists of four databases: Cleveland, Hungary, Switzerland, and Long each. The original data source is the [UCI Machine Learning Repository](https://archive.ics.uci.edu/ml/datasets/Heart+Disease), which contains 76 attributes, but all published experiments refer to using a subset of 14 of them, so as mine.  
 
 In the dataset, every row is a person with the given parameters in each column. The number of the observations is 1025 originally, which will decrease to 1000 after omitting some with missing values. This dataset was pretty clean already, only a few modifications were needed to make the analysis more convenient. 
 
@@ -189,6 +193,10 @@ kbl(df_summary, digits = 2) %>% kable_styling(bootstrap_options = "striped", ful
 In order to get to know my variables, I have made some basics histograms. From those, it was visible that some variables might need a log transformation. In the appendix, we can see the result of some possible transformations, but in the end, I decided to stay with the original scales as the modifications probably would not pay off.  
 
 The table above contains the summary statistics of the variables I used in the analysis. To highlight some patterns in our data, the mean of the presence of heart disease is almost 50%, which could be good for prediction, however, 70% of the observations are male, which is not representing the population well. The age variable also shows that the sample is not really representing a whole population, but probably a subset of people who has to do something with cardiovascular problems. The other variables are more like medical terms, therefore I would not go into detailed preconceptions. 
+
+## Data quality issues
+
+However this dataset is clean, quality is a different thing. This dataset is from 1988 from different parts of the world. We do not know much about the collection of this data, but it was a medical project, therefore I would say, that most patients had some connection with cardiovascular problems. This argument would explain the ratio of men and the age distribution of the dataset as well. The age and the sample of this dataset mean that the external validity is not perfect of this dataset if we want to generalize to the whole population. 
 
 ```{r include=FALSE}
 create_plot <- function(column, name){
@@ -453,6 +461,46 @@ for (j in 1:ncol(df2)){
   print(prop.table(table(df2[, j], df$heart_dis)))
 }
 
+##
+#Robustness check
+
+#creating training and test samples (4/2 and 1/5)
+
+df_rand <-  sort(sample(nrow(df), nrow(df)*.2))
+
+train <- df[-df_rand,]
+test <- df[df_rand,]
+
+
+logit_train <- glm( model_formula , data=train, family=binomial(link="logit") )
+summary(logit_train)
+glance(logit_train)
+
+# predicted probabilities 
+test$pred_logit_train <- predict.glm(logit_train, newdata = test ,  type="response")
+summary(test$pred_logit_train)
+
+# Calculate logit marginal differences
+logit_train_marg <- logitmfx( model_formula, data=train, atmean=FALSE, robust = T)
+print(logit_train_marg)
+
+predict_logit_train = ggplot(data = test,aes(x=pred_logit_train)) + 
+  ggtitle("Prediction distribution of the logit model on test sample") +
+  geom_histogram(data=subset(test[test$heart_dis == 1, ]), 
+                 aes(fill=as.factor(heart_dis), color=as.factor(heart_dis), y = (..count..)/sum(..count..)*100),
+                 binwidth = 0.05, boundary=0, alpha=0.8) +
+  geom_histogram(data=subset(test[test$heart_dis == 0, ]), 
+                 aes(fill=as.factor(heart_dis), color=as.factor(heart_dis), y = (..count..)/sum(..count..)*100), 
+                 binwidth = 0.05, boundary=0, alpha=0) +
+  scale_fill_manual(name="", values=c("0" = "white", "1" = "red"),labels=c("Does not have heart disease","Has heart disease")) +
+  scale_color_manual(name="", values=c("0" = "blue", "1" = "red"),labels=c("Does not have heart disease","Has heart disease")) +
+  ylab("Percent") +
+  xlab("Fitted values") +
+  scale_x_continuous(expand=c(0.01,0.01) ,limits = c(0,1), breaks = seq(0,1,0.2)) +
+  scale_y_continuous(expand=c(0.00,0.00) ,limits = c(0,20), breaks = seq(0,20,4)) +
+  theme(legend.position = c(0.7,0.8),
+        legend.key.size = unit(x = 0.5, units = "cm"),
+        plot.title = element_text(hjust = 0.5))
 
 ```
 
@@ -483,7 +531,7 @@ From the calibration curve of the logit model above we can say, that the model i
 
 To analyse the lowest and highest percent probabilities I used the LPM model as from the prediction distribution of the logit model we can see, that there are some errors in the lowest and highest percent predictions, which would affect my results. 
 
-\begin{center}
+
 Top 1 percent (ones with the likelihood of heart disease)
 ```{r, echo = FALSE , results = "asis", warning = FALSE, message = FALSE }
 kbl(t1, digits = 2) %>% kable_styling(bootstrap_options = "striped", full_width = F, position = "center")
@@ -492,7 +540,7 @@ Bottom 1 percent (ones with a probably healthy cardio vascular system)
 ```{r, echo = FALSE , results = "asis", warning = FALSE, message = FALSE }
 kbl(b1, digits = 2) %>% kable_styling(bootstrap_options = "striped", full_width = F, position = "center")
 ```
-\end{center}
+
 
 In the tables above we can observe the summary statistics (the most interpretable variables) of the lowest and highest percent probabilities. 	
 
@@ -500,16 +548,34 @@ We can interpret, that the most endangered ones are men with age around 59, with
 
 The most healthy ones are women with age around 47, with lower cholesterol level and blood pressure, but interestingly higher maximum heart rate during exercise. To explain this strange behavior I have made some research and some publications suggested, that maximum heart rate gets lower with age which means that the worst group has a lower maximum heart rate on average which explains my finding. 
 
+## Robustness check
 
+In order to check the robustness of the model, I separated my data set into training and test sample (4/5 and 1/5 ratio). After training the model on the training sample we can compare the coefficients of the model (comparison table in the appendix). We can conclude that there are some slight differences, but the main pattern is the same. Furthermore, the prediction distribution of this model (in the appendix) also shows a similar pattern to the original one. Therefore I would say, that my logit model is robust within this dataset, however, we should highlight that this is not equal with external validity at all.
+
+# Generalization
+
+In the data quality part, it has been already stated, that the external validity of this dataset is not very good if we want to generalize our findings to the population as it is not representative in many variables. I already mentioned age and gender, moreover the average and median cholesterol level in the data sample is also way above the optimal value which further strengthens the argument, that probably most of the patients in this dataset have health problems. On the other hand, this model can be generalized for people who have some symptoms and reach out to medical organizations. In these cases, this model can give advice on the seriousness of the problem.
+
+# Summary
+
+As a conclusion, we can interpret the most interesting variables in the final model (we can state the following statements on a 95% confidence interval or higher). 
+
+- If the patient is male, he has 17% more probability on average to have heart disease than women. 
+- Between the age of 52 and 61 if the patient is older by one year, on average s/he has 2.3% more probability of having a heart disease.
+- Below 115 (Hg mm), if the patient has one unit higher resting blood pressure, on average s/he has 1% more probability of having a heart disease.
+- If the patient has exercise-induced angina s/he has 9% more probability of having heart disease.
+- Under 4 pieces, if the patient has one more narrow vessel,  s/he has 14% more probability of having a heart disease.
+
+Some of these variables are just symptoms, some of them are measurable medical variables, and some of them can be both.  For this reason, in my opinion, this model is mostly good to uncover the significance of each variable in connection with the presence of heart disease, however, it can make some suggestions to diagnose symptoms in order to identify life-threatening problems faster. On the other hand, I would like to highlight that with models like this, we should always be really careful not to make any false-negative decisions!
 
 # Appendix
 
 ```{r fig 1, fig.width=8,fig.height=4,  echo = FALSE , results = 'asis', warning = FALSE, message = FALSE}
 ggarrange(p1, p2, p3, p4, nrow = 2, ncol=2 )
 ```
-\begin{center}
+
 Possible variable transformations
-\end{center}
+
 
 ```{r fig 3, fig.width=18,fig.height=25,  echo = FALSE , results = 'asis', warning = FALSE, message = FALSE }
 ggarrange(p_age,
@@ -527,7 +593,8 @@ ggarrange(p_age,
           nrow = 7, ncol = 2 )
 ```
 
-\begin{center}
+
+
 ```{r, results = 'asis', echo = FALSE, scalebox = 0.5}
 texreg(list(lpm1, lpm2, lpm), table = FALSE, use.packages = FALSE, center = TRUE, omit.coef = "as.factor*", 
        custom.model.names = c("LPM model 1", "LPM model 2", "LPM model 3"),
@@ -541,12 +608,38 @@ texreg(list(lpm1, lpm2, lpm), table = FALSE, use.packages = FALSE, center = TRUE
                              "Number of major vessels")) 
 ```
 
-Comparing LPM models with different number of variables (quantitative variables are hidden from the third model to fit onto one page but I am controlling the model on them as well)
-\end{center}
+```{r, results = 'asis', echo = FALSE, scalebox = 0.5}  
+htmlreg(list(lpm1, lpm2, lpm), table = FALSE, use.packages = FALSE, center = TRUE, omit.coef = "as.factor*", #only include when knitting html
+       custom.model.names = c("LPM model 1", "LPM model 2", "LPM model 3"),
+       custom.coef.names = c("Intercept", "Gender", "Age below 52", "Age between 52 and 61", "Age above 61", 
+                             "Resting blood pressure under 115", "Resting blood pressure between 115 and 130",
+                             "Resting blood pressure above 130", "Serum cholesterol under 210",
+                             "Serum cholesterol between 210 and 270", "Serum cholesterol between 270 and 430",
+                             "Serum cholesterol above 430", "Fasting blood sugar above 120 mg/dl",
+                             "Maximum heart rate achieved below 140", "Maximum heart rate achieved above 140",
+                             "Exercise-induced angina occured", "Oldpeak below 4", "Oldpeak above 4",
+                             "Number of major vessels")) 
+```
 
-\begin{center}
+
+Comparing LPM models with different number of variables (quantitative variables are hidden from the third model to fit onto one page but I am controlling the model on them as well)
+
+
 ```{r, results = 'asis', echo = FALSE, scalebox = 0.5}
 texreg(list(lpm, logit, logit_marg, probit, probit_marg), table = FALSE, use.packages = FALSE, center = TRUE, omit.coef = "as.factor*", 
+       custom.model.names = c("LPM", "Logit", "Logit margins", "Probit", "Probit margins"),
+       custom.coef.names = c("Intercept", "Gender", "Age below 52", "Age between 52 and 61", "Age above 61", 
+                             "Resting blood pressure under 115", "Resting blood pressure between 115 and 130",
+                             "Resting blood pressure above 130", "Serum cholesterol under 210",
+                             "Serum cholesterol between 210 and 270", "Serum cholesterol between 270 and 430",
+                             "Serum cholesterol above 430", "Fasting blood sugar above 120 mg/dl",
+                             "Maximum heart rate achieved below 140", "Maximum heart rate achieved above 140",
+                             "Exercise-induced angina occured", "Oldpeak below 4", "Oldpeak above 4",
+                             "Number of major vessels")) 
+```
+
+```{r, results = 'asis', echo = FALSE, scalebox = 0.5}
+htmlreg(list(lpm, logit, logit_marg, probit, probit_marg), table = FALSE, use.packages = FALSE, center = TRUE, omit.coef = "as.factor*", #only include when knitting html 
        custom.model.names = c("LPM", "Logit", "Logit margins", "Probit", "Probit margins"),
        custom.coef.names = c("Intercept", "Gender", "Age below 52", "Age between 52 and 61", "Age above 61", 
                              "Resting blood pressure under 115", "Resting blood pressure between 115 and 130",
@@ -563,5 +656,40 @@ Comparing LPM model with Logit and Probit models (quantitative variables are hid
 ```{r fig 4, fig.width=8,fig.height=3,  echo = FALSE , results = 'asis', warning = FALSE, message = FALSE}
 compare_models
 ```
+
 Comparing LPM model with Logit and Probit model predictions
-\end{center}
+
+
+```{r, results = 'asis', echo = FALSE, scalebox = 0.5}
+texreg(list(logit,logit_train, logit_marg, logit_train_marg), table = FALSE, use.packages = FALSE, center = TRUE, omit.coef = "as.factor*", 
+       custom.model.names = c("Logit", "Logit robust", "Logit margins", "Logit robust margins"),
+       custom.coef.names = c("Intercept", "Gender", "Age below 52", "Age between 52 and 61", "Age above 61", 
+                             "Resting blood pressure under 115", "Resting blood pressure between 115 and 130",
+                             "Resting blood pressure above 130", "Serum cholesterol under 210",
+                             "Serum cholesterol between 210 and 270", "Serum cholesterol between 270 and 430",
+                             "Serum cholesterol above 430", "Fasting blood sugar above 120 mg/dl",
+                             "Maximum heart rate achieved below 140", "Maximum heart rate achieved above 140",
+                             "Exercise-induced angina occured", "Oldpeak below 4", "Oldpeak above 4",
+                             "Number of major vessels")) 
+```
+
+```{r, results = 'asis', echo = FALSE, scalebox = 0.5}
+htmlreg(list(logit,logit_train, logit_marg, logit_train_marg), table = FALSE, use.packages = FALSE, center = TRUE, omit.coef = "as.factor*", #only include when knitting html
+       custom.model.names = c("Logit", "Logit robust", "Logit margins", "Logit robust margins"),
+       custom.coef.names = c("Intercept", "Gender", "Age below 52", "Age between 52 and 61", "Age above 61", 
+                             "Resting blood pressure under 115", "Resting blood pressure between 115 and 130",
+                             "Resting blood pressure above 130", "Serum cholesterol under 210",
+                             "Serum cholesterol between 210 and 270", "Serum cholesterol between 270 and 430",
+                             "Serum cholesterol above 430", "Fasting blood sugar above 120 mg/dl",
+                             "Maximum heart rate achieved below 140", "Maximum heart rate achieved above 140",
+                             "Exercise-induced angina occured", "Oldpeak below 4", "Oldpeak above 4",
+                             "Number of major vessels")) 
+```
+
+Comparing model with the model created for robustness check (separated training and test sample (4/5 and 1/5))
+
+```{r fig 5, fig.width=8,fig.height=3,  echo = FALSE , results = 'asis', warning = FALSE, message = FALSE}
+predict_logit_train
+```
+
+The prediction distribution of the model created for robustness check (separated training and test sample (4/5 and 1/5))
