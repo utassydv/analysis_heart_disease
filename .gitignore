@@ -39,3 +39,7 @@ vignettes/*.pdf
 .Renviron
 
 codes/covid/
+
+*.Rproj
+
+workspace.code-workspace
